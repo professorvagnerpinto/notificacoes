@@ -5,15 +5,24 @@
  */
 
 import React from 'react';
-import {View, Text} from 'react-native';
+import {StyleSheet, View, Text, FlatList, TouchableOpacity} from 'react-native';
 import firebase from 'react-native-firebase';
 import AsyncStorage from '@react-native-community/async-storage';
 
-//TODO falta configurar para IOS
+//TODO falta configurar para IOS, Messaging e RealtimeDatabase
 export default class App extends React.Component{
 
     constructor(props) {
         super(props);
+        this.state = {
+            token:'',
+            userKey:'123', //simulando um login
+            devices:[]
+        }
+
+        this.getDevices = this.getDevices.bind(this);
+        this.clearAsyncStorage = this.clearAsyncStorage.bind(this);
+        this.addDevice = this.addDevice.bind(this);
     }
 
     componentDidMount(){
@@ -25,7 +34,7 @@ export default class App extends React.Component{
         //qdo aberto = qdo o usuário receber notificação com o app aberto
         firebase.notifications().onNotification((notification)=>{
             console.log(notification);
-            alert('Qdo o app está Aberto=\n' + notification.title + '\n' + notification.body );
+            alert('Qdo o app está ABERTO=\n' + notification.title + '\n' + notification.body );
         });
 
         //qdo fechado =  qdo o usuário clicar na notificação e o app estiver fechado
@@ -33,7 +42,7 @@ export default class App extends React.Component{
             .then((event)=>{
                 if(event != null){
                     console.log(event.notification);
-                    alert('Qdo o app está Fechado=\n' //aqui deve colocar os dados nos metadados da notification
+                    alert('Qdo o app está FECHADO=\n' //aqui deve colocar os dados nos metadados da notification
                         + event.notification.data.title + '\n' + event.notification.data.body );
                 }
             });
@@ -54,15 +63,18 @@ export default class App extends React.Component{
         AsyncStorage.getItem('notifToken')
             .then((token)=>{
                 if(token){
-                    console.log('Token pego do Firebase Cloud Messagin');
+                    console.log('Token já pego do Firebase Cloud Messaging');
+                    this.setState({token});
                 }else{
                     firebase.messaging().getToken()
                         .then((token)=>{
-                            console.log('Token= ' + token);
+                            console.log('Token pego no Firebase= ' + token);
+                            this.setState({token});
                             AsyncStorage.setItem('notifToken', token)
                                 .catch((e)=>{
                                     alert('Error= ' + e.code);
                                 });
+                            this.addDevice(token);
                         });
                 }
             });
@@ -70,7 +82,6 @@ export default class App extends React.Component{
 
     requestPermission(){
         try{
-            console.log('Chamou requestPermission');
             firebase.messaging().requestPermission()
                 .then(()=>{
                     this.getToken();
@@ -80,11 +91,84 @@ export default class App extends React.Component{
         }
     }
 
+    getDevices(){
+        firebase.database().ref('users').child(this.state.userKey).child('devices')
+            .once('value')
+            .then((snapshot)=>{
+                let s = this.state;
+                s.devices = [];
+                snapshot.forEach((childItem)=>{
+                    s.devices.push({
+                        key:childItem.key,
+                        token:childItem.val().token
+                    });
+                });
+                this.setState(s);
+            });
+    }
+
+    addDevice(token){
+        let ref = firebase.database().ref('users').child(this.state.userKey).child('devices');
+        ref.orderByChild('token')
+            .equalTo(token)
+            .once('value')
+            .then((snapshot)=>{
+                if(snapshot.val() == null){
+                    ref.push().set({token});
+                }
+            });
+    }
+
+    clearAsyncStorage(){
+        this.setState({token:''});
+        AsyncStorage.removeItem('notifToken');
+    }
+
     render(){
         return(
             <View style={{flex:1}}>
-                <Text>Projeto Notificações</Text>
+                <Text>Usuário logado: {this.state.userKey}</Text>
+                <Text>{this.state.token}</Text>
+                <FlatList
+                    style={{width:'100%', height:300, backgroundColor:'#eeeeee'}}
+                    data={this.state.devices}
+                    renderItem={({item})=>{
+                        return(
+                            <View>
+                                <Text>Dispositivos:</Text>
+                                <Text>key= {item.key}</Text>
+                                <Text>token= {item.token}</Text>
+                                <Text>--------------------------</Text>
+                            </View>
+                        );
+                    }}
+                />
+                <TouchableOpacity style={styles.button} onPress={this.getDevices} >
+                    <Text style={styles.textButton}>Buscar Devices</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={this.clearAsyncStorage} >
+                    <Text style={styles.textButton}>Limpar AssyncStorage</Text>
+                </TouchableOpacity>
             </View>
         );
     }
 }
+
+const styles = StyleSheet.create({
+    button: {
+        width:220,
+        height:50,
+        alignItems:'center',
+        backgroundColor: '#ff6a6a',
+        borderRadius: 5,
+        padding: 15,
+        paddingHorizontal: 20,
+        alignSelf: 'center',
+        margin: 20,
+    },
+    textButton:{
+        fontSize:14,
+        color:'#ffffff',
+        fontWeight:'bold'
+    }
+});
