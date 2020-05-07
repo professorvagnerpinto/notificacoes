@@ -9,6 +9,15 @@ import {StyleSheet, View, Text, FlatList, TouchableOpacity} from 'react-native';
 import firebase from 'react-native-firebase';
 import AsyncStorage from '@react-native-community/async-storage';
 
+//configura o canal de notificaçẽos
+const notificationChannel = new firebase.notifications.Android.Channel( //somente Android
+    'notificacoesIdChannel', //id do canal de notificações
+    'projetoNotificacoes', //título do canal
+    firebase.notifications.Android.Importance.Max //prioridade da notificação
+).setDescription('Canal das notificações do projeto notificacoes');
+//cria o canal de notificaçẽos
+firebase.notifications().android.createChannel(notificationChannel);
+
 //TODO falta configurar para IOS, Messaging e RealtimeDatabase
 export default class App extends React.Component{
 
@@ -23,6 +32,8 @@ export default class App extends React.Component{
         this.getDevices = this.getDevices.bind(this);
         this.clearAsyncStorage = this.clearAsyncStorage.bind(this);
         this.addDevice = this.addDevice.bind(this);
+        this.displayStaticNotification = this.displayStaticNotification.bind(this);
+        this.displayNotification = this.displayNotification.bind(this);
     }
 
     componentDidMount(){
@@ -31,21 +42,29 @@ export default class App extends React.Component{
     }
 
     createNotificationListeners(){
-        //qdo aberto = qdo o usuário receber notificação com o app aberto
+        //qdo aberto = qdo o usuário receber a notificação com o app aberto
         firebase.notifications().onNotification((notification)=>{
-            console.log(notification);
-            alert('Qdo o app está ABERTO=\n' + notification.title + '\n' + notification.body );
+            this.displayNotification(notification.data.id, notification.title, notification.body);
         });
 
-        //qdo fechado =  qdo o usuário clicar na notificação e o app estiver fechado
+        //qdo fechado =  qdo o usuário receber a notificação e clicar nela com o app fechado
         firebase.notifications().getInitialNotification()
-            .then((event)=>{
-                if(event != null){
-                    console.log(event.notification);
-                    alert('Qdo o app está FECHADO=\n' //aqui deve colocar os dados nos metadados da notification
-                        + event.notification.data.title + '\n' + event.notification.data.body );
-                }
-            });
+            .then((event)=>{this.notificationOpenedEvent(event)});
+
+        //quando o usuário clica na nofiticação
+        firebase.notifications().onNotificationOpened((event)=>{
+            this.notificationOpenedEvent(event);
+            firebase.notifications().removeAllDeliveredNotifications();
+        });
+    }
+
+    notificationOpenedEvent(event){
+        if(event != null){
+            alert('Qdo clicou na notification:\n' //aqui deve colocar os dados nos metadados da notification
+                + event.notification.data.id
+                + '\n' + event.notification.data.title
+                + '\n' + event.notification.data.body );
+        }
     }
 
     checkPermission(){
@@ -63,12 +82,10 @@ export default class App extends React.Component{
         AsyncStorage.getItem('notifToken')
             .then((token)=>{
                 if(token){
-                    console.log('Token já pego do Firebase Cloud Messaging');
                     this.setState({token});
                 }else{
                     firebase.messaging().getToken()
                         .then((token)=>{
-                            console.log('Token pego no Firebase= ' + token);
                             this.setState({token});
                             AsyncStorage.setItem('notifToken', token)
                                 .catch((e)=>{
@@ -124,6 +141,28 @@ export default class App extends React.Component{
         AsyncStorage.removeItem('notifToken');
     }
 
+    displayStaticNotification(){
+        const notification = new firebase.notifications.Notification(); //cria a notificação
+        notification.setNotificationId('123')
+            .setTitle('Minha notificação')
+            .setBody('Corpo da minha notificação')
+            .setData({id:'123', title:'Título no metadado', body:'Corpo no metadado'});
+        notification.android.setChannelId('notificacoesIdChannel'); //para Android
+
+        firebase.notifications().displayNotification(notification);
+    }
+
+    displayNotification(id, title, body){
+        const notification = new firebase.notifications.Notification(); //cria a notificação
+        notification.setNotificationId(id)
+            .setTitle(title)
+            .setBody(body)
+            .setData({id:id, title:title, body:body});
+        notification.android.setChannelId('notificacoesIdChannel'); //para Android
+
+        firebase.notifications().displayNotification(notification);
+    }
+
     render(){
         return(
             <View style={{flex:1}}>
@@ -149,6 +188,9 @@ export default class App extends React.Component{
                 <TouchableOpacity style={styles.button} onPress={this.clearAsyncStorage} >
                     <Text style={styles.textButton}>Limpar AssyncStorage</Text>
                 </TouchableOpacity>
+                <TouchableOpacity style={styles.button} onPress={this.displayStaticNotification} >
+                    <Text style={styles.textButton}>Exibir Notificação</Text>
+                </TouchableOpacity>
             </View>
         );
     }
@@ -162,9 +204,8 @@ const styles = StyleSheet.create({
         backgroundColor: '#ff6a6a',
         borderRadius: 5,
         padding: 15,
-        paddingHorizontal: 20,
         alignSelf: 'center',
-        margin: 20,
+        margin: 5,
     },
     textButton:{
         fontSize:14,
