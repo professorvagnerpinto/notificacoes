@@ -18,7 +18,6 @@ const notificationChannel = new firebase.notifications.Android.Channel( //soment
 //cria o canal de notificaçẽos
 firebase.notifications().android.createChannel(notificationChannel);
 
-//TODO falta configurar para IOS, Messaging e RealtimeDatabase
 export default class App extends React.Component{
 
     constructor(props) {
